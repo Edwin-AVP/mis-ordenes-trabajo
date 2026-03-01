@@ -66,7 +66,7 @@
                             <th class="px-6 py-4 text-sm font-semibold text-slate-600">Cliente</th>
                             <th class="px-6 py-4 text-sm font-semibold text-slate-600">Cédula/NIT</th>
                             <th class="px-6 py-4 text-sm font-semibold text-slate-600">Teléfono</th>
-                            <th class="px-6 py-4 text-sm font-semibold text-slate-600">Correo</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-slate-600">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="clients-table-body"></tbody>
@@ -77,15 +77,16 @@
 
     <div id="client-modal" class="fixed inset-0 bg-slate-900/60 hidden flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <h3 class="text-xl font-bold mb-4">Registrar Nuevo Cliente</h3>
-            <form onsubmit="saveClient(event)" class="space-y-4">
+            <h3 id="client-modal-title" class="text-xl font-bold mb-4">Registrar Nuevo Cliente</h3>
+            <form id="client-form" onsubmit="saveClient(event)" class="space-y-4">
+                <input type="hidden" id="edit-client-index">
                 <input type="text" id="c-name" placeholder="Nombre completo" required class="w-full border p-2.5 rounded-lg">
                 <input type="text" id="c-id" placeholder="Cédula o NIT" required class="w-full border p-2.5 rounded-lg">
                 <input type="tel" id="c-phone" placeholder="Teléfono / Celular" required class="w-full border p-2.5 rounded-lg">
                 <input type="email" id="c-email" placeholder="Correo (Opcional)" class="w-full border p-2.5 rounded-lg">
                 <div class="flex gap-3">
                     <button type="button" onclick="closeModal('client-modal')" class="flex-1 py-2 text-slate-500 font-medium">Cancelar</button>
-                    <button type="submit" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg font-bold">Guardar Cliente</button>
+                    <button type="submit" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg font-bold">Guardar</button>
                 </div>
             </form>
         </div>
@@ -134,7 +135,6 @@
         // --- DATA MANAGEMENT ---
         let clients = JSON.parse(localStorage.getItem('ms_clients')) || [];
         let orders = JSON.parse(localStorage.getItem('ms_orders')) || [];
-        // CORRECCIÓN: Contador persistente para el número de orden
         let lastOrderNum = parseInt(localStorage.getItem('ms_last_order_num')) || 0;
 
         // --- NAVIGATION ---
@@ -146,184 +146,18 @@
         }
 
         // --- CLIENT LOGIC ---
-        function openClientModal() { document.getElementById('client-modal').classList.remove('hidden'); }
-        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-
-        function saveClient(e) {
-            e.preventDefault();
-            const client = {
-                id: document.getElementById('c-id').value,
-                name: document.getElementById('c-name').value,
-                phone: document.getElementById('c-phone').value,
-                email: document.getElementById('c-email').value || 'Sin correo'
-            };
-            clients.push(client);
-            localStorage.setItem('ms_clients', JSON.stringify(clients));
-            renderClients();
-            closeModal('client-modal');
-            e.target.reset();
-        }
-
-        function renderClients() {
-            const tbody = document.getElementById('clients-table-body');
-            tbody.innerHTML = clients.map(c => `
-                <tr class="hover:bg-slate-50 border-b border-slate-100">
-                    <td class="px-6 py-4 font-semibold text-slate-800">${c.name}</td>
-                    <td class="px-6 py-4 text-slate-600">${c.id}</td>
-                    <td class="px-6 py-4 text-slate-600">${c.phone}</td>
-                    <td class="px-6 py-4 text-slate-400 text-sm">${c.email}</td>
-                </tr>
-            `).join('');
-            updateClientSelect();
-        }
-
-        function updateClientSelect() {
-            const select = document.getElementById('order-client-select');
-            select.innerHTML = '<option value="" disabled selected>Elija un cliente registrado...</option>' + 
-                clients.map(c => `<option value="${c.id}">${c.name} (${c.id})</option>`).join('');
-        }
-
-        // --- ORDER LOGIC ---
-        function openOrderModal(editIdx = null) {
-            if (clients.length === 0) {
-                alert("Primero debes crear un cliente para poder generar una orden.");
-                switchTab('clients');
-                return;
-            }
-            const modal = document.getElementById('order-modal');
-            const form = document.getElementById('order-form');
-            const title = document.getElementById('order-modal-title');
-            const container = document.getElementById('items-container');
+        function openClientModal(idx = null) { 
+            const modal = document.getElementById('client-modal');
+            const form = document.getElementById('client-form');
+            const title = document.getElementById('client-modal-title');
             
             form.reset();
-            container.innerHTML = '';
             modal.classList.remove('hidden');
 
-            if (editIdx !== null) {
-                title.innerText = "Editar Orden " + orders[editIdx].orderNum;
-                document.getElementById('edit-index').value = editIdx;
-                const order = orders[editIdx];
-                document.getElementById('order-client-select').value = order.clientId;
-                document.getElementById('order-status').value = order.status;
-                order.items.forEach(item => addItemRow(item));
-            } else {
-                title.innerText = "Crear Orden de Trabajo";
-                document.getElementById('edit-index').value = "";
-                addItemRow();
-            }
-            lucide.createIcons();
-        }
-
-        function addItemRow(data = {qty:1, name:'', desc:'', price:''}) {
-            const div = document.createElement('div');
-            div.className = "p-4 bg-slate-50 rounded-xl grid grid-cols-12 gap-2 relative border border-slate-200";
-            div.innerHTML = `
-                <div class="col-span-2"><input type="number" placeholder="Cant" value="${data.qty}" class="i-qty w-full border rounded p-1"></div>
-                <div class="col-span-6"><input type="text" placeholder="Nombre Articulo" value="${data.name}" class="i-name w-full border rounded p-1"></div>
-                <div class="col-span-4"><input type="number" placeholder="Valor $" value="${data.price}" class="i-price w-full border rounded p-1"></div>
-                <div class="col-span-12"><textarea placeholder="Descripción" class="i-desc w-full border rounded p-1 text-sm">${data.desc}</textarea></div>
-                <button type="button" onclick="this.parentElement.remove()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><i data-lucide="x" class="w-3 h-3"></i></button>
-            `;
-            document.getElementById('items-container').appendChild(div);
-            lucide.createIcons();
-        }
-
-        function handleOrderSubmit(e) {
-            e.preventDefault();
-            const editIdx = document.getElementById('edit-index').value;
-            const items = [];
-            document.querySelectorAll('#items-container > div').forEach(row => {
-                items.push({
-                    qty: row.querySelector('.i-qty').value,
-                    name: row.querySelector('.i-name').value,
-                    price: parseFloat(row.querySelector('.i-price').value || 0),
-                    desc: row.querySelector('.i-desc').value
-                });
-            });
-
-            const clientId = document.getElementById('order-client-select').value;
-            const client = clients.find(c => c.id === clientId);
-
-            // CORRECCIÓN LÓGICA DE NÚMERO DE ORDEN
-            let currentOrderNum;
-            if (editIdx !== "") {
-                currentOrderNum = orders[editIdx].orderNum; // Mantener original si es edición
-            } else {
-                lastOrderNum++; // Incrementar contador histórico
-                currentOrderNum = "ORD-" + String(lastOrderNum).padStart(4, '0');
-                localStorage.setItem('ms_last_order_num', lastOrderNum); // Guardar contador
-            }
-
-            const orderData = {
-                orderNum: currentOrderNum,
-                clientId: client.id,
-                clientName: client.name,
-                clientPhone: client.phone,
-                status: document.getElementById('order-status').value,
-                items: items,
-                total: items.reduce((sum, i) => sum + i.price, 0),
-                date: editIdx !== "" ? orders[editIdx].date : new Date().toLocaleDateString()
-            };
-
-            if (editIdx !== "") {
-                orders[editIdx] = orderData;
-            } else {
-                orders.push(orderData);
-            }
-
-            localStorage.setItem('ms_orders', JSON.stringify(orders));
-            renderOrders();
-            closeModal('order-modal');
-        }
-
-        function renderOrders(dataToRender = orders) {
-            const list = document.getElementById('orders-list');
-            list.innerHTML = dataToRender.map((o, idx) => `
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="text-xs font-bold text-slate-400">${o.orderNum} | ${o.date}</span>
-                        <span class="status-badge status-${o.status}">${o.status.toUpperCase()}</span>
-                    </div>
-                    <h4 class="font-bold text-slate-800 text-lg">${o.clientName}</h4>
-                    <p class="text-sm text-slate-500 mb-4">${o.clientPhone}</p>
-                    <div class="space-y-2 border-t pt-4">
-                        ${o.items.map(i => `<p class="text-xs text-slate-600"><b>${i.qty}x</b> ${i.name} - $${i.price.toLocaleString()}</p>`).join('')}
-                    </div>
-                    <div class="flex justify-between items-center mt-6 border-t pt-4">
-                        <span class="font-bold text-indigo-600 text-xl">$${o.total.toLocaleString()}</span>
-                        <div class="flex gap-2">
-                            <button onclick="openOrderModal(${idx})" class="p-2 text-slate-400 hover:text-indigo-600"><i data-lucide="edit-3" class="w-5 h-5"></i></button>
-                            <button onclick="deleteOrder(${idx})" class="p-2 text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-            lucide.createIcons();
-        }
-
-        function deleteOrder(idx) {
-            if(confirm('¿Eliminar esta orden? El número de orden no se volverá a usar.')) {
-                orders.splice(idx, 1);
-                localStorage.setItem('ms_orders', JSON.stringify(orders));
-                renderOrders();
-            }
-        }
-
-        // --- SEARCH ---
-        function filterContent() {
-            const query = document.getElementById('globalSearch').value.toLowerCase();
-            const filtered = orders.filter(o => 
-                o.clientName.toLowerCase().includes(query) || 
-                o.clientPhone.includes(query) || 
-                o.orderNum.toLowerCase().includes(query)
-            );
-            renderOrders(filtered);
-        }
-
-        // Init
-        renderClients();
-        renderOrders();
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+            if (idx !== null) {
+                title.innerText = "Editar Cliente";
+                document.getElementById('edit-client-index').value = idx;
+                document.getElementById('c-id').value = clients[idx].id;
+                document.getElementById('c-name').value = clients[idx].name;
+                document.getElementById('c-phone').value = clients[idx].phone;
+                document.getElementById('c
