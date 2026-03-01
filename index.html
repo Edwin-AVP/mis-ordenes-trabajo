@@ -160,7 +160,8 @@
                 document.getElementById('c-id').value = clients[idx].id;
                 document.getElementById('c-name').value = clients[idx].name;
                 document.getElementById('c-phone').value = clients[idx].phone;
-                document.getElementById('c-email').value = clients[idx].email;
+                // CORRECCIÓN: Manejar correo vacío al editar
+                document.getElementById('c-email').value = clients[idx].email === 'Sin correo' ? '' : clients[idx].email;
             } else {
                 title.innerText = "Registrar Nuevo Cliente";
                 document.getElementById('edit-client-index').value = "";
@@ -176,6 +177,7 @@
                 id: document.getElementById('c-id').value,
                 name: document.getElementById('c-name').value,
                 phone: document.getElementById('c-phone').value,
+                // CORRECCIÓN: Correo opcional
                 email: document.getElementById('c-email').value || 'Sin correo'
             };
 
@@ -201,14 +203,17 @@
             closeModal('client-modal');
         }
 
+        // CORRECCIÓN: No eliminar si tiene órdenes
         function deleteClient(idx) {
             const client = clients[idx];
             const hasOrders = orders.some(o => o.clientId === client.id);
             
-            let msg = `¿Estás seguro de eliminar a ${client.name}?`;
-            if (hasOrders) msg += "\n\nADVERTENCIA: Este cliente tiene órdenes asociadas. Si lo eliminas, las órdenes quedarán sin referencia de cliente.";
+            if (hasOrders) {
+                alert(`No se puede eliminar a ${client.name} porque tiene órdenes asociadas. Elimine las órdenes primero.`);
+                return;
+            }
 
-            if(confirm(msg)) {
+            if(confirm(`¿Estás seguro de eliminar a ${client.name}?`)) {
                 clients.splice(idx, 1);
                 localStorage.setItem('ms_clients', JSON.stringify(clients));
                 renderClients();
