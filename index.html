@@ -3,21 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MasterService v2 | Gestión de Órdenes</title>
+    <title>MasterService v2 | Gestión Total</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; }
         .tab-active { border-bottom: 2px solid #4f46e5; color: #4f46e5; }
-        .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
         .status-revision { background: #e2e8f0; color: #475569; }
         .status-reparacion { background: #dbeafe; color: #2563eb; }
         .status-reparado { background: #dcfce7; color: #166534; }
         .status-entregado { background: #fef3c7; color: #92400e; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #print-section, #print-section * { visibility: visible; }
+            #print-section { position: absolute; left: 0; top: 0; width: 100%; display: block !important; }
+        }
+        
+        /* Contenedor invisible para capturar el PDF */
+        #pdf-render-area { position: absolute; left: -9999px; top: -9999px; width: 800px; background: white; }
     </style>
 </head>
 <body class="pb-12">
+
+    <div id="print-section" class="hidden p-8 bg-white"></div>
+    <div id="pdf-render-area"></div>
 
     <nav class="bg-white border-b border-slate-200 sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -29,22 +44,22 @@
                 <div class="flex gap-6 text-sm font-medium text-slate-500">
                     <button onclick="switchTab('orders')" id="tab-orders" class="tab-active py-5">Órdenes</button>
                     <button onclick="switchTab('clients')" id="tab-clients" class="py-5">Clientes</button>
+                    <button onclick="switchTab('assets')" id="tab-assets" class="py-5">Hojas de Vida</button>
                 </div>
             </div>
         </div>
     </nav>
 
     <div class="max-w-7xl mx-auto px-4 mt-8">
-        
         <div class="mb-8 relative max-w-2xl mx-auto">
             <i data-lucide="search" class="absolute left-4 top-3 text-slate-400 w-5 h-5"></i>
-            <input type="text" id="globalSearch" onkeyup="filterContent()" placeholder="Buscar por cliente, celular o # de orden..." 
-                   class="w-full pl-12 pr-4 py-3 rounded-2xl border-none shadow-sm focus:ring-2 focus:ring-indigo-500 bg-white">
+            <input type="text" id="globalSearch" onkeyup="filterContent()" placeholder="Buscar por cliente, equipo o # orden..." 
+                    class="w-full pl-12 pr-4 py-3 rounded-2xl border-none shadow-sm focus:ring-2 focus:ring-indigo-500 bg-white">
         </div>
 
         <div id="view-orders">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-slate-800">Lista de Órdenes</h2>
+                <h2 class="text-2xl font-bold text-slate-800">Órdenes de Trabajo</h2>
                 <button onclick="openOrderModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-indigo-700 transition">
                     <i data-lucide="plus"></i> Nueva Orden
                 </button>
@@ -64,29 +79,39 @@
                     <thead class="bg-slate-50 border-b border-slate-200">
                         <tr>
                             <th class="px-6 py-4 text-sm font-semibold text-slate-600">Cliente</th>
-                            <th class="px-6 py-4 text-sm font-semibold text-slate-600">Cédula/NIT</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-slate-600">ID / NIT</th>
                             <th class="px-6 py-4 text-sm font-semibold text-slate-600">Teléfono</th>
-                            <th class="px-6 py-4 text-sm font-semibold text-slate-600">Acciones</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="clients-table-body"></tbody>
                 </table>
             </div>
         </div>
+
+        <div id="view-assets" class="hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-slate-800">Hojas de Vida de Equipos</h2>
+                <button onclick="openAssetModal()" class="bg-purple-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-purple-700 transition">
+                    <i data-lucide="clipboard-list"></i> Nuevo Equipo
+                </button>
+            </div>
+            <div id="assets-list" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+        </div>
     </div>
 
     <div id="client-modal" class="fixed inset-0 bg-slate-900/60 hidden flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <h3 id="client-modal-title" class="text-xl font-bold mb-4">Registrar Nuevo Cliente</h3>
-            <form id="client-form" onsubmit="saveClient(event)" class="space-y-4">
-                <input type="hidden" id="edit-client-index">
+            <h3 id="client-modal-title" class="text-xl font-bold mb-4">Registrar Cliente</h3>
+            <form onsubmit="handleClientSubmit(event)" class="space-y-4">
+                <input type="hidden" id="edit-client-idx">
                 <input type="text" id="c-name" placeholder="Nombre completo" required class="w-full border p-2.5 rounded-lg">
                 <input type="text" id="c-id" placeholder="Cédula o NIT" required class="w-full border p-2.5 rounded-lg">
-                <input type="tel" id="c-phone" placeholder="Teléfono / Celular" required class="w-full border p-2.5 rounded-lg">
+                <input type="tel" id="c-phone" placeholder="Teléfono" required class="w-full border p-2.5 rounded-lg">
                 <input type="email" id="c-email" placeholder="Correo (Opcional)" class="w-full border p-2.5 rounded-lg">
-                <div class="flex gap-3">
-                    <button type="button" onclick="closeModal('client-modal')" class="flex-1 py-2 text-slate-500 font-medium">Cancelar</button>
-                    <button type="submit" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg font-bold">Guardar</button>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="closeModal('client-modal')" class="flex-1 py-2 text-slate-500">Cancelar</button>
+                    <button type="submit" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg font-bold">Guardar Cliente</button>
                 </div>
             </form>
         </div>
@@ -94,191 +119,264 @@
 
     <div id="order-modal" class="fixed inset-0 bg-slate-900/60 hidden flex items-center justify-center p-4 z-50 overflow-y-auto">
         <div class="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl my-8">
-            <h3 id="order-modal-title" class="text-xl font-bold mb-6 italic">Crear Orden de Trabajo</h3>
+            <h3 id="order-modal-title" class="text-xl font-bold mb-6 italic">Orden de Trabajo</h3>
             <form id="order-form" onsubmit="handleOrderSubmit(event)" class="space-y-6">
-                <input type="hidden" id="edit-index">
-                
+                <input type="hidden" id="edit-order-idx">
                 <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
                     <label class="block text-sm font-bold text-indigo-700 mb-2">Seleccionar Cliente</label>
-                    <select id="order-client-select" required class="w-full border-none p-2 rounded-lg bg-white shadow-sm focus:ring-2 focus:ring-indigo-500"></select>
+                    <select id="order-client-select" required class="w-full border-none p-2 rounded-lg bg-white shadow-sm"></select>
                 </div>
-
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-bold text-slate-600 mb-1">Estado de la Orden</label>
-                        <select id="order-status" class="w-full border p-2 rounded-lg">
+                        <label class="block text-sm font-bold text-slate-600 mb-1">Estado</label>
+                        <select id="order-status" onchange="toggleDeliveryFields()" class="w-full border p-2 rounded-lg">
                             <option value="revision">En Revisión</option>
                             <option value="reparacion">En Reparación</option>
                             <option value="reparado">Reparado</option>
                             <option value="entregado">Entregado</option>
                         </select>
                     </div>
+                    <div id="delivery-info" class="hidden">
+                        <label class="block text-sm font-bold text-orange-600 mb-1">Entregado a:</label>
+                        <input type="text" id="delivered-to" class="w-full border p-2 rounded-lg border-orange-200" placeholder="Nombre de quien retira">
+                    </div>
                 </div>
-
                 <div>
                     <div class="flex justify-between mb-2">
-                        <label class="font-bold text-slate-700">Artículos / Equipos</label>
+                        <label class="font-bold text-slate-700">Ítems / Servicios</label>
                         <button type="button" onclick="addItemRow()" class="text-indigo-600 text-sm font-bold hover:underline">+ Añadir Item</button>
                     </div>
                     <div id="items-container" class="space-y-4"></div>
                 </div>
-
                 <div class="flex gap-3">
                     <button type="button" onclick="closeModal('order-modal')" class="flex-1 py-3 text-slate-500">Cerrar</button>
-                    <button type="submit" class="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200">Guardar Orden</button>
+                    <button type="submit" class="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">Guardar Orden</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="asset-modal" class="fixed inset-0 bg-slate-900/60 hidden flex items-center justify-center p-4 z-50 overflow-y-auto">
+        <div class="bg-white rounded-2xl w-full max-w-3xl p-6 shadow-2xl my-8">
+            <h3 class="text-xl font-bold mb-4 border-b pb-2">Hoja de Vida de Equipo</h3>
+            <form id="asset-form" onsubmit="handleAssetSubmit(event)" class="space-y-6">
+                <input type="hidden" id="edit-asset-idx">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div class="md:col-span-2"><label class="block text-xs font-bold uppercase">Equipo</label><input type="text" id="a-name" required class="w-full border p-2 rounded"></div>
+                    <div><label class="block text-xs font-bold uppercase">Marca</label><input type="text" id="a-brand" class="w-full border p-2 rounded"></div>
+                    <div><label class="block text-xs font-bold uppercase">Modelo</label><input type="text" id="a-model" class="w-full border p-2 rounded"></div>
+                    <div><label class="block text-xs font-bold uppercase">Serial</label><input type="text" id="a-sn" class="w-full border p-2 rounded"></div>
+                    <div><label class="block text-xs font-bold uppercase">Código Inventario</label><input type="text" id="a-code" class="w-full border p-2 rounded"></div>
+                    <div><label class="block text-xs font-bold uppercase">Capacidad/Potencia</label><input type="text" id="a-power" class="w-full border p-2 rounded"></div>
+                    <div><label class="block text-xs font-bold uppercase">Fecha Fabricación</label><input type="date" id="a-date-fab" class="w-full border p-2 rounded"></div>
+                    <div><label class="block text-xs font-bold uppercase">Fecha Compra</label><input type="date" id="a-date-buy" class="w-full border p-2 rounded"></div>
+                </div>
+                <div class="border-t pt-4">
+                    <div class="flex justify-between items-center mb-2"><h4 class="font-bold">Historial de Mantenimiento</h4><button type="button" onclick="addHistoryRow()" class="text-xs bg-indigo-100 text-indigo-600 px-2 py-1 rounded font-bold">+ Agregar Registro</button></div>
+                    <div id="history-container" class="space-y-3 bg-slate-50 p-3 rounded-lg max-h-60 overflow-y-auto"></div>
+                </div>
+                <div class="flex gap-3">
+                    <button type="button" onclick="closeModal('asset-modal')" class="flex-1 py-3 text-slate-500">Cancelar</button>
+                    <button type="submit" class="flex-1 py-3 bg-purple-600 text-white rounded-xl font-bold">Guardar Hoja de Vida</button>
                 </div>
             </form>
         </div>
     </div>
 
     <script>
-        // --- DATA MANAGEMENT ---
+        // PERSISTENCIA
         let clients = JSON.parse(localStorage.getItem('ms_clients')) || [];
         let orders = JSON.parse(localStorage.getItem('ms_orders')) || [];
+        let assets = JSON.parse(localStorage.getItem('ms_assets')) || [];
         let lastOrderNum = parseInt(localStorage.getItem('ms_last_order_num')) || 0;
+        let lastAssetNum = parseInt(localStorage.getItem('ms_last_asset_num')) || 0;
 
-        // --- NAVIGATION ---
+        // NAVEGACIÓN
         function switchTab(tab) {
             document.getElementById('view-orders').classList.toggle('hidden', tab !== 'orders');
             document.getElementById('view-clients').classList.toggle('hidden', tab !== 'clients');
+            document.getElementById('view-assets').classList.toggle('hidden', tab !== 'assets');
             document.getElementById('tab-orders').className = tab === 'orders' ? 'tab-active py-5' : 'py-5';
             document.getElementById('tab-clients').className = tab === 'clients' ? 'tab-active py-5' : 'py-5';
+            document.getElementById('tab-assets').className = tab === 'assets' ? 'tab-active py-5' : 'py-5';
         }
-
-        // --- CLIENT LOGIC ---
-        function openClientModal(idx = null) { 
-            const modal = document.getElementById('client-modal');
-            const form = document.getElementById('client-form');
-            const title = document.getElementById('client-modal-title');
-            
-            form.reset();
-            modal.classList.remove('hidden');
-
-            if (idx !== null) {
-                title.innerText = "Editar Cliente";
-                document.getElementById('edit-client-index').value = idx;
-                document.getElementById('c-id').value = clients[idx].id;
-                document.getElementById('c-name').value = clients[idx].name;
-                document.getElementById('c-phone').value = clients[idx].phone;
-                // CORRECCIÓN: Manejar correo vacío al editar
-                document.getElementById('c-email').value = clients[idx].email === 'Sin correo' ? '' : clients[idx].email;
-            } else {
-                title.innerText = "Registrar Nuevo Cliente";
-                document.getElementById('edit-client-index').value = "";
-            }
-        }
-
         function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
-        function saveClient(e) {
-            e.preventDefault();
-            const idx = document.getElementById('edit-client-index').value;
-            const clientData = {
-                id: document.getElementById('c-id').value,
-                name: document.getElementById('c-name').value,
-                phone: document.getElementById('c-phone').value,
-                // CORRECCIÓN: Correo opcional
-                email: document.getElementById('c-email').value || 'Sin correo'
-            };
-
-            if (idx !== "") {
-                // Actualizar órdenes existentes con los nuevos datos del cliente
-                const oldId = clients[idx].id;
-                orders.forEach(order => {
-                    if (order.clientId === oldId) {
-                        order.clientId = clientData.id;
-                        order.clientName = clientData.name;
-                        order.clientPhone = clientData.phone;
-                    }
-                });
-                clients[idx] = clientData;
-                localStorage.setItem('ms_orders', JSON.stringify(orders));
-            } else {
-                clients.push(clientData);
-            }
-
-            localStorage.setItem('ms_clients', JSON.stringify(clients));
-            renderClients();
-            renderOrders();
-            closeModal('client-modal');
-        }
-
-        // CORRECCIÓN: No eliminar si tiene órdenes
-        function deleteClient(idx) {
-            const client = clients[idx];
-            const hasOrders = orders.some(o => o.clientId === client.id);
-            
-            if (hasOrders) {
-                alert(`No se puede eliminar a ${client.name} porque tiene órdenes asociadas. Elimine las órdenes primero.`);
-                return;
-            }
-
-            if(confirm(`¿Estás seguro de eliminar a ${client.name}?`)) {
-                clients.splice(idx, 1);
-                localStorage.setItem('ms_clients', JSON.stringify(clients));
-                renderClients();
-            }
-        }
-
+        // --- GESTIÓN DE CLIENTES ---
         function renderClients() {
             const tbody = document.getElementById('clients-table-body');
             tbody.innerHTML = clients.map((c, idx) => `
                 <tr class="hover:bg-slate-50 border-b border-slate-100">
-                    <td class="px-6 py-4">
-                        <div class="font-semibold text-slate-800">${c.name}</div>
-                        <div class="text-xs text-slate-400">${c.email}</div>
-                    </td>
+                    <td class="px-6 py-4 font-semibold text-slate-800">${c.name}</td>
                     <td class="px-6 py-4 text-slate-600">${c.id}</td>
                     <td class="px-6 py-4 text-slate-600">${c.phone}</td>
-                    <td class="px-6 py-4">
-                        <div class="flex gap-2">
-                            <button onclick="openClientModal(${idx})" class="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg transition">
-                                <i data-lucide="edit-2" class="w-4 h-4"></i>
-                            </button>
-                            <button onclick="deleteClient(${idx})" class="text-red-500 hover:bg-red-50 p-2 rounded-lg transition">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        </div>
+                    <td class="px-6 py-4 text-right">
+                        <button onclick="openClientModal(${idx})" class="p-1 text-indigo-600 hover:bg-indigo-50 rounded mr-2"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                        <button onclick="deleteClient(${idx})" class="p-1 text-red-600 hover:bg-red-50 rounded"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                     </td>
-                </tr>
-            `).join('');
-            updateClientSelect();
-            lucide.createIcons();
+                </tr>`).join('');
+            updateClientSelect(); lucide.createIcons();
         }
 
         function updateClientSelect() {
             const select = document.getElementById('order-client-select');
-            select.innerHTML = '<option value="" disabled selected>Elija un cliente registrado...</option>' + 
-                clients.map(c => `<option value="${c.id}">${c.name} (${c.id})</option>`).join('');
+            if(!select) return;
+            select.innerHTML = '<option value="" disabled selected>Seleccione cliente...</option>' + 
+                clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
         }
 
-        // --- ORDER LOGIC ---
-        function openOrderModal(editIdx = null) {
-            if (clients.length === 0) {
-                alert("Primero debes crear un cliente.");
-                switchTab('clients');
-                return;
-            }
-            const modal = document.getElementById('order-modal');
-            const form = document.getElementById('order-form');
-            const container = document.getElementById('items-container');
-            
-            form.reset();
-            container.innerHTML = '';
-            modal.classList.remove('hidden');
+        // --- GESTIÓN DE ÓRDENES ---
+        function renderOrders(dataToRender = orders) {
+            const list = document.getElementById('orders-list');
+            list.innerHTML = dataToRender.map((o, idx) => `
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-bold text-slate-400">${o.orderNum} | ${o.date}</span>
+                        <span class="status-badge status-${o.status}">${o.status}</span>
+                    </div>
+                    <h4 class="font-bold text-slate-800 text-lg">${o.clientName}</h4>
+                    
+                    ${o.status === 'entregado' ? `
+                    <div class="mt-2 p-2 bg-orange-50 border border-orange-100 rounded-lg">
+                        <p class="text-[10px] text-orange-700 font-bold uppercase">Entregado el: ${o.deliveryDate}</p>
+                        <p class="text-[10px] text-orange-600">Recibió: ${o.deliveredTo || 'N/A'}</p>
+                    </div>` : ''}
 
-            if (editIdx !== null) {
-                document.getElementById('order-modal-title').innerText = "Editar Orden " + orders[editIdx].orderNum;
-                document.getElementById('edit-index').value = editIdx;
-                const order = orders[editIdx];
-                document.getElementById('order-client-select').value = order.clientId;
-                document.getElementById('order-status').value = order.status;
-                order.items.forEach(item => addItemRow(item));
-            } else {
-                document.getElementById('order-modal-title').innerText = "Crear Orden de Trabajo";
-                document.getElementById('edit-index').value = "";
-                addItemRow();
-            }
+                    <div class="grid grid-cols-2 gap-2 mt-4">
+                        <button onclick="printOrder(${idx})" class="text-[10px] bg-slate-100 p-2 rounded flex items-center gap-1 hover:bg-slate-200 transition"><i data-lucide="printer" class="w-3 h-3"></i> Recibo</button>
+                        <button onclick="printReport(${idx})" class="text-[10px] bg-indigo-100 text-indigo-700 p-2 rounded flex items-center gap-1 hover:bg-indigo-200 transition"><i data-lucide="file-text" class="w-3 h-3"></i> Informe Técnico</button>
+                        <button onclick="sendWhatsApp(${idx})" class="text-[10px] bg-green-100 text-green-700 p-2 rounded flex items-center gap-1 hover:bg-green-200 transition"><i data-lucide="message-circle" class="w-3 h-3"></i> WhatsApp</button>
+                        <button onclick="openOrderModal(${idx})" class="text-[10px] bg-slate-100 p-2 rounded flex items-center gap-1 hover:bg-slate-200 transition"><i data-lucide="edit-3" class="w-3 h-3"></i> Editar</button>
+                        <button onclick="createAssetFromOrder(${idx})" class="col-span-2 text-[10px] bg-purple-100 text-purple-700 p-2 rounded flex items-center justify-center gap-1 font-bold hover:bg-purple-200 transition"><i data-lucide="clipboard-list" class="w-3 h-3"></i> Crear Hoja de Vida con este Recibo</button>
+                    </div>
+                    <div class="mt-4 pt-4 border-t flex justify-between items-center">
+                        <span class="font-bold text-indigo-600 text-xl">$${o.total.toLocaleString()}</span>
+                        <button onclick="deleteOrder(${idx})" class="text-red-400 hover:text-red-600 p-1"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                    </div>
+                </div>`).join('');
+            lucide.createIcons();
+        }
+
+        // --- GESTIÓN DE HOJAS DE VIDA ---
+        function renderAssets() {
+            const list = document.getElementById('assets-list');
+            list.innerHTML = assets.map((a, idx) => `
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <span class="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">${a.assetNum}</span>
+                            <h4 class="font-bold text-slate-800 mt-1">${a.name}</h4>
+                        </div>
+                        <div class="flex gap-1">
+                             <button onclick="openAssetModal(${idx})" class="p-2 text-slate-400 hover:text-indigo-600 transition"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                             <button onclick="deleteAsset(${idx})" class="p-2 text-slate-400 hover:text-red-600 transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-slate-500 grid grid-cols-2 gap-x-2 mb-4 bg-slate-50 p-2 rounded-lg">
+                        <p><b>Marca:</b> ${a.brand}</p><p><b>Modelo:</b> ${a.model}</p>
+                        <p><b>S/N:</b> ${a.sn}</p><p><b>Inventario:</b> ${a.code}</p>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="printAsset(${idx})" class="flex items-center justify-center gap-1 bg-slate-800 text-white text-[10px] py-2 rounded-lg hover:bg-slate-700 transition"><i data-lucide="printer" class="w-3 h-3"></i> Imprimir</button>
+                        <button onclick="shareAssetWhatsApp(${idx})" class="flex items-center justify-center gap-1 bg-green-600 text-white text-[10px] py-2 rounded-lg hover:bg-green-700 transition"><i data-lucide="message-circle" class="w-3 h-3"></i> WhatsApp</button>
+                        <button onclick="shareAssetEmail(${idx})" class="flex items-center justify-center gap-1 bg-blue-600 text-white text-[10px] py-2 rounded-lg hover:bg-blue-700 transition"><i data-lucide="mail" class="w-3 h-3"></i> Correo</button>
+                    </div>
+                </div>`).join('');
+            lucide.createIcons();
+        }
+
+        // --- SISTEMA DE GENERACIÓN DE PDF Y WHATSAPP ---
+        async function shareAssetWhatsApp(idx) {
+            const a = assets[idx];
+            
+            // 1. Mostrar mensaje de carga (opcional)
+            alert("Generando PDF y abriendo WhatsApp...");
+
+            // 2. Generar el PDF
+            await generateAssetPDF(idx);
+
+            // 3. Preparar mensaje de WhatsApp
+            const lastMaint = a.history[0] ? `%0A*Último Mantenimiento:* ${a.history[0].date}%0A*Actividad:* ${a.history[0].desc}` : '';
+            const msg = `*📋 HOJA DE VIDA TÉCNICA - ${a.assetNum}*%0A%0A*Equipo:* ${a.name}%0A*Marca:* ${a.brand}%0A*Serial:* ${a.sn}%0A${lastMaint}%0A%0A_He generado el PDF de la Hoja de Vida, por favor adjunta el archivo descargado._`;
+            
+            window.open(`https://wa.me/?text=${msg}`);
+        }
+
+        async function generateAssetPDF(idx) {
+            const { jsPDF } = window.jspdf;
+            const a = assets[idx];
+            const area = document.getElementById('pdf-render-area');
+
+            // Crear diseño para el PDF
+            area.innerHTML = `
+                <div style="padding: 40px; font-family: Arial, sans-serif;">
+                    <h1 style="color: #4f46e5; margin-bottom: 5px;">MASTERSERVICE</h1>
+                    <h3 style="color: #666; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px;">Hoja de Vida de Equipo: ${a.assetNum}</h3>
+                    
+                    <div style="display: flex; gap: 40px; margin-top: 20px;">
+                        <div>
+                            <p><b>Equipo:</b> ${a.name}</p>
+                            <p><b>Marca:</b> ${a.brand}</p>
+                            <p><b>Modelo:</b> ${a.model}</p>
+                        </div>
+                        <div>
+                            <p><b>Serial:</b> ${a.sn}</p>
+                            <p><b>Cód. Inventario:</b> ${a.code}</p>
+                            <p><b>Potencia:</b> ${a.power}</p>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top: 40px; background: #f1f5f9; padding: 10px;">HISTORIAL DE MANTENIMIENTO</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                        <thead>
+                            <tr style="background: #e2e8f0; text-align: left;">
+                                <th style="padding: 10px; border: 1px solid #ccc;">Fecha</th>
+                                <th style="padding: 10px; border: 1px solid #ccc;">Tipo</th>
+                                <th style="padding: 10px; border: 1px solid #ccc;">Actividad Realizada</th>
+                                <th style="padding: 10px; border: 1px solid #ccc;">Técnico</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${a.history.map(h => `
+                                <tr>
+                                    <td style="padding: 10px; border: 1px solid #ccc;">${h.date}</td>
+                                    <td style="padding: 10px; border: 1px solid #ccc;">${h.type}</td>
+                                    <td style="padding: 10px; border: 1px solid #ccc;">${h.desc}</td>
+                                    <td style="padding: 10px; border: 1px solid #ccc;">${h.tech}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            const canvas = await html2canvas(area);
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`${a.assetNum}_${a.name}.pdf`);
+            area.innerHTML = ''; // Limpiar
+        }
+
+        // --- RESTO DE FUNCIONALIDADES TÉCNICAS (MODALES, SUBMITS, ETC) ---
+        function openOrderModal(idx = null) {
+            if (clients.length === 0) return alert("Crea un cliente primero.");
+            const form = document.getElementById('order-form');
+            form.reset(); document.getElementById('items-container').innerHTML = '';
+            if (idx !== null) {
+                const o = orders[idx];
+                document.getElementById('edit-order-idx').value = idx;
+                document.getElementById('order-client-select').value = o.clientId;
+                document.getElementById('order-status').value = o.status;
+                document.getElementById('delivered-to').value = o.deliveredTo || '';
+                toggleDeliveryFields();
+                o.items.forEach(item => addItemRow(item));
+            } else { document.getElementById('edit-order-idx').value = ""; addItemRow(); }
+            document.getElementById('order-modal').classList.remove('hidden');
             lucide.createIcons();
         }
 
@@ -287,106 +385,153 @@
             div.className = "p-4 bg-slate-50 rounded-xl grid grid-cols-12 gap-2 relative border border-slate-200";
             div.innerHTML = `
                 <div class="col-span-2"><input type="number" placeholder="Cant" value="${data.qty}" class="i-qty w-full border rounded p-1"></div>
-                <div class="col-span-6"><input type="text" placeholder="Nombre Articulo" value="${data.name}" class="i-name w-full border rounded p-1"></div>
-                <div class="col-span-4"><input type="number" placeholder="Valor $" value="${data.price}" class="i-price w-full border rounded p-1"></div>
-                <div class="col-span-12"><textarea placeholder="Descripción" class="i-desc w-full border rounded p-1 text-sm">${data.desc}</textarea></div>
-                <button type="button" onclick="this.parentElement.remove()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><i data-lucide="x" class="w-3 h-3"></i></button>
-            `;
+                <div class="col-span-6"><input type="text" placeholder="Servicio" value="${data.name}" class="i-name w-full border rounded p-1"></div>
+                <div class="col-span-4"><input type="number" placeholder="Precio" value="${data.price}" class="i-price w-full border rounded p-1"></div>
+                <div class="col-span-12"><textarea placeholder="Notas" class="i-desc w-full border rounded p-1 text-sm">${data.desc}</textarea></div>
+                <button type="button" onclick="this.parentElement.remove()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><i data-lucide="x" class="w-3 h-3"></i></button>`;
             document.getElementById('items-container').appendChild(div);
             lucide.createIcons();
         }
 
         function handleOrderSubmit(e) {
             e.preventDefault();
-            const editIdx = document.getElementById('edit-index').value;
-            const items = [];
-            document.querySelectorAll('#items-container > div').forEach(row => {
-                items.push({
-                    qty: row.querySelector('.i-qty').value,
-                    name: row.querySelector('.i-name').value,
-                    price: parseFloat(row.querySelector('.i-price').value || 0),
-                    desc: row.querySelector('.i-desc').value
-                });
-            });
-
-            const clientId = document.getElementById('order-client-select').value;
-            const client = clients.find(c => c.id === clientId);
-
-            let currentOrderNum;
-            if (editIdx !== "") {
-                currentOrderNum = orders[editIdx].orderNum;
-            } else {
-                lastOrderNum++;
-                currentOrderNum = "ORD-" + String(lastOrderNum).padStart(4, '0');
-                localStorage.setItem('ms_last_order_num', lastOrderNum);
-            }
+            const idx = document.getElementById('edit-order-idx').value;
+            const items = Array.from(document.querySelectorAll('#items-container > div')).map(row => ({
+                qty: row.querySelector('.i-qty').value,
+                name: row.querySelector('.i-name').value,
+                price: parseFloat(row.querySelector('.i-price').value || 0),
+                desc: row.querySelector('.i-desc').value
+            }));
+            const client = clients.find(c => c.id === document.getElementById('order-client-select').value);
+            const status = document.getElementById('order-status').value;
+            let orderNum = idx !== "" ? orders[idx].orderNum : "ORD-" + String(++lastOrderNum).padStart(4, '0');
+            if(idx === "") localStorage.setItem('ms_last_order_num', lastOrderNum);
 
             const orderData = {
-                orderNum: currentOrderNum,
-                clientId: client.id,
-                clientName: client.name,
-                clientPhone: client.phone,
-                status: document.getElementById('order-status').value,
-                items: items,
-                total: items.reduce((sum, i) => sum + i.price, 0),
-                date: editIdx !== "" ? orders[editIdx].date : new Date().toLocaleDateString()
+                orderNum, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email,
+                status, items, total: items.reduce((sum, i) => sum + i.price, 0),
+                date: idx !== "" ? orders[idx].date : new Date().toLocaleDateString(),
+                deliveryDate: status === 'entregado' ? (idx !== "" && orders[idx].deliveryDate ? orders[idx].deliveryDate : new Date().toLocaleDateString()) : null,
+                deliveredTo: status === 'entregado' ? document.getElementById('delivered-to').value : ''
             };
-
-            if (editIdx !== "") orders[editIdx] = orderData;
-            else orders.push(orderData);
-
+            if (idx !== "") orders[idx] = orderData; else orders.push(orderData);
             localStorage.setItem('ms_orders', JSON.stringify(orders));
-            renderOrders();
-            closeModal('order-modal');
+            renderOrders(); closeModal('order-modal');
         }
 
-        function renderOrders(dataToRender = orders) {
-            const list = document.getElementById('orders-list');
-            list.innerHTML = dataToRender.map((o, idx) => `
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <div class="flex justify-between items-start mb-4">
-                        <span class="text-xs font-bold text-slate-400">${o.orderNum} | ${o.date}</span>
-                        <span class="status-badge status-${o.status}">${o.status.toUpperCase()}</span>
-                    </div>
-                    <h4 class="font-bold text-slate-800 text-lg">${o.clientName}</h4>
-                    <p class="text-sm text-slate-500 mb-4">${o.clientPhone}</p>
-                    <div class="space-y-2 border-t pt-4">
-                        ${o.items.map(i => `<p class="text-xs text-slate-600"><b>${i.qty}x</b> ${i.name} - $${i.price.toLocaleString()}</p>`).join('')}
-                    </div>
-                    <div class="flex justify-between items-center mt-6 border-t pt-4">
-                        <span class="font-bold text-indigo-600 text-xl">$${o.total.toLocaleString()}</span>
-                        <div class="flex gap-2">
-                            <button onclick="openOrderModal(${idx})" class="p-2 text-slate-400 hover:text-indigo-600"><i data-lucide="edit-3" class="w-5 h-5"></i></button>
-                            <button onclick="deleteOrder(${idx})" class="p-2 text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
-                        </div>
-                    </div>
+        // --- CLIENTES Y ASSETS ---
+        function openClientModal(idx = null) {
+            document.getElementById('client-modal').classList.remove('hidden');
+            if(idx !== null) {
+                document.getElementById('edit-client-idx').value = idx;
+                document.getElementById('c-name').value = clients[idx].name;
+                document.getElementById('c-id').value = clients[idx].id;
+                document.getElementById('c-phone').value = clients[idx].phone;
+            } else {
+                document.getElementById('edit-client-idx').value = "";
+                document.getElementById('c-name').value = "";
+            }
+        }
+
+        function handleClientSubmit(e) {
+            e.preventDefault();
+            const idx = document.getElementById('edit-client-idx').value;
+            const data = {
+                name: document.getElementById('c-name').value,
+                id: document.getElementById('c-id').value,
+                phone: document.getElementById('c-phone').value,
+                email: document.getElementById('c-email').value || 'Sin correo'
+            };
+            if(idx !== "") clients[idx] = data; else clients.push(data);
+            localStorage.setItem('ms_clients', JSON.stringify(clients));
+            renderClients(); closeModal('client-modal');
+        }
+
+        function openAssetModal(idx = null) {
+            document.getElementById('asset-modal').classList.remove('hidden');
+            document.getElementById('asset-form').reset();
+            document.getElementById('history-container').innerHTML = '';
+            if(idx !== null) {
+                document.getElementById('edit-asset-idx').value = idx;
+                const a = assets[idx];
+                document.getElementById('a-name').value = a.name;
+                document.getElementById('a-brand').value = a.brand;
+                document.getElementById('a-sn').value = a.sn;
+                document.getElementById('a-code').value = a.code;
+                a.history.forEach(h => addHistoryRow(h));
+            } else {
+                document.getElementById('edit-asset-idx').value = "";
+                addHistoryRow();
+            }
+        }
+
+        function addHistoryRow(data = {date:'', type:'preventivo', desc:'', parts:'', tech:''}) {
+            const div = document.createElement('div');
+            div.className = "p-3 bg-white border border-slate-200 rounded-lg space-y-2 relative shadow-sm";
+            div.innerHTML = `
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="date" value="${data.date}" class="h-date border p-1 rounded text-xs">
+                    <select class="h-type border p-1 rounded text-xs">
+                        <option value="preventivo" ${data.type === 'preventivo' ? 'selected' : ''}>Preventivo</option>
+                        <option value="correctivo" ${data.type === 'correctivo' ? 'selected' : ''}>Correctivo</option>
+                    </select>
                 </div>
-            `).join('');
+                <textarea placeholder="Actividad" class="h-desc w-full border p-1 rounded text-xs">${data.desc}</textarea>
+                <input type="text" placeholder="Técnico" value="${data.tech}" class="h-tech w-full border p-1 rounded text-xs">
+                <button type="button" onclick="this.parentElement.remove()" class="absolute -top-1 -right-1 bg-red-50 text-red-500 rounded-full p-0.5"><i data-lucide="x" class="w-3 h-3"></i></button>`;
+            document.getElementById('history-container').appendChild(div);
             lucide.createIcons();
         }
 
-        function deleteOrder(idx) {
-            if(confirm('¿Eliminar esta orden?')) {
-                orders.splice(idx, 1);
-                localStorage.setItem('ms_orders', JSON.stringify(orders));
-                renderOrders();
-            }
+        function handleAssetSubmit(e) {
+            e.preventDefault();
+            const idx = document.getElementById('edit-asset-idx').value;
+            const history = Array.from(document.querySelectorAll('#history-container > div')).map(row => ({
+                date: row.querySelector('.h-date').value,
+                type: row.querySelector('.h-type').value,
+                desc: row.querySelector('.h-desc').value,
+                tech: row.querySelector('.h-tech').value
+            }));
+            let assetNum = idx !== "" ? assets[idx].assetNum : "HV-" + String(++lastAssetNum).padStart(4, '0');
+            if(idx === "") localStorage.setItem('ms_last_asset_num', lastAssetNum);
+
+            const data = {
+                assetNum,
+                name: document.getElementById('a-name').value,
+                brand: document.getElementById('a-brand').value,
+                model: document.getElementById('a-model').value,
+                sn: document.getElementById('a-sn').value,
+                code: document.getElementById('a-code').value,
+                power: document.getElementById('a-power').value,
+                history
+            };
+            if(idx !== "") assets[idx] = data; else assets.push(data);
+            localStorage.setItem('ms_assets', JSON.stringify(assets));
+            renderAssets(); closeModal('asset-modal');
         }
 
+        function deleteOrder(idx) { if(confirm('¿Eliminar orden?')) { orders.splice(idx, 1); localStorage.setItem('ms_orders', JSON.stringify(orders)); renderOrders(); } }
+        function deleteAsset(idx) { if(confirm('¿Eliminar Hoja de Vida?')) { assets.splice(idx, 1); localStorage.setItem('ms_assets', JSON.stringify(assets)); renderAssets(); } }
         function filterContent() {
-            const query = document.getElementById('globalSearch').value.toLowerCase();
-            const filtered = orders.filter(o => 
-                o.clientName.toLowerCase().includes(query) || 
-                o.clientPhone.includes(query) || 
-                o.orderNum.toLowerCase().includes(query)
-            );
+            const q = document.getElementById('globalSearch').value.toLowerCase();
+            const filtered = orders.filter(o => o.clientName.toLowerCase().includes(q) || o.orderNum.toLowerCase().includes(q));
             renderOrders(filtered);
         }
+        function toggleDeliveryFields() {
+            const isEntregado = document.getElementById('order-status').value === 'entregado';
+            document.getElementById('delivery-info').classList.toggle('hidden', !isEntregado);
+        }
 
-        // Init
-        renderClients();
-        renderOrders();
-        lucide.createIcons();
+        // --- WHATSAPP ÓRDENES ---
+        function sendWhatsApp(idx) {
+            const o = orders[idx];
+            const itemsList = o.items.map(i => `• ${i.qty}x ${i.name}`).join('%0A');
+            const msg = `*🛠️ MASTERSERVICE - RESUMEN*%0A%0A*Orden:* ${o.orderNum}%0A*Cliente:* ${o.clientName}%0A*Estado:* ${o.status.toUpperCase()}%0A%0A*Servicios:*%0A${itemsList}%0A%0A*Total:* $${o.total.toLocaleString()}%0A%0A_Gracias por su confianza._`;
+            window.open(`https://wa.me/${o.clientPhone.replace(/\D/g,'')}?text=${msg}`);
+        }
+
+        // Inicializar
+        renderClients(); renderOrders(); renderAssets(); lucide.createIcons();
     </script>
 </body>
 </html>
